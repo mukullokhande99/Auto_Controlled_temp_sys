@@ -1,0 +1,4 @@
+TRANSFER
+".\Objects\STARTUP.obj",
+".\Objects\autoac.obj" 
+TO ".\Objects\autoac.LIB"

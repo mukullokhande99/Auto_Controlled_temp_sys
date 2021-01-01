@@ -1,0 +1,4 @@
+".\Objects\STARTUP.obj",
+".\Objects\autoac.obj" 
+TO ".\Objects\autoac" 
+PRINT(".\Listings\autoac.m51")

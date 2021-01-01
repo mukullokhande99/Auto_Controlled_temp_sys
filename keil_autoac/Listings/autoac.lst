@@ -1,0 +1,404 @@
+C51 COMPILER V9.59.0.0   AUTOAC                                                            04/06/2019 15:05:16 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE AUTOAC
+OBJECT MODULE PLACED IN .\Objects\autoac.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE autoac.c OPTIMIZE(8,SPEED) DEBUG OBJECTEXTEND PRINT(.\Listings\autoac.ls
+                    -t) TABS(2) OBJECT(.\Objects\autoac.obj)
+
+line level    source
+
+   1          #include<reg51.h>               //header file
+   2            #define MYDATA P3               //Port 3 as "MYDATA", input from ADC
+   3            #define ldata P1                //Port 1 as data pins for lcd, output to LCD
+   4            #define FL3i 35                 //temperature limits
+   5            #define FL2ii 35  
+   6            #define FL2i 30  
+   7            #define FL1ii 30
+   8            #define FL1i 25
+   9            #define NLii 25
+  10            #define NLi 20
+  11            #define HL1i 20
+  12            #define HL1ii 10
+  13            #define HL2i 10
+  14            #define HL2ii 00
+  15          
+  16          
+  17          
+  18              sbit rd=P2^5;                     //P2.5 with identifier rd, read command to ADC
+  19              sbit wr=P2^4;                     //P2.4 with identifier wr, write command to ADC
+  20              sbit INTR=P2^3;                   //P2.3 with identifier INTR, detect start and end of conversion by ADC
+  21              sbit rs=P2^0;                     //P2.0 value to RS_register of LCD
+  22              sbit rw=P2^1;                     //P2.1 value to RW_register of LCD
+  23              sbit en=P2^2;                     //P2.2 value to EN_register of LCD
+  24              sbit MTR=P2^6;                    //P2.6 PWM signal to Motor
+  25              sbit HTR1=P0^0;                   //P0.0 led1
+  26              sbit HTR2=P0^1;                   //P0.0 led2
+  27              sbit busy=P1^7;                   //P1.7, identifier busy
+  28          
+  29            void msDelay(unsigned int value)      //provides delay value*1ms
+  30            { 
+  31   1        unsigned int x,y;
+  32   1        for(x=0;x<value;x++)
+  33   1          for(y=0;y<1000;y++); 
+  34   1        }
+  35          
+  36          
+  37            void lcdReady()                       //if lcd is ready or busy?
+  38              {  
+  39   1          busy=1;
+  40   1          rs=0;
+  41   1          rw=1;
+  42   1          while(busy==1)
+  43   1          {
+  44   2            en=0;
+  45   2            en=1;
+  46   2          }
+  47   1          return;
+  48   1          }
+  49              void lcdCmd(unsigned char value)     //command to lcd if ready
+  50                { 
+  51   1          lcdReady();                   
+  52   1          ldata=value;
+  53   1          rs=0;             
+  54   1          rw=0;
+C51 COMPILER V9.59.0.0   AUTOAC                                                            04/06/2019 15:05:16 PAGE 2   
+
+  55   1          en=1;
+  56   1          en=0;
+  57   1          return;
+  58   1          }
+  59                
+  60              void lcdInit()                      //Initializes lcd
+  61                { 
+  62   1          lcdCmd(0x38);
+  63   1          lcdCmd(0x0c);
+  64   1          lcdCmd(0x01);
+  65   1          lcdCmd(0x80);                       //calling lcd command
+  66   1          return; 
+  67   1            }
+  68              void lcdData(char value)              //input to lcd
+  69                {               
+  70   1          ldata=value;
+  71   1          rs=1;
+  72   1          rw=0;
+  73   1          en=1;
+  74   1          en=0;
+  75   1          return;
+  76   1            }
+  77          
+  78              void display(char d1,char d2)         //display on lcd
+  79                {
+  80   1          lcdData(d2);
+  81   1          msDelay(30);
+  82   1          msDelay(30);
+  83   1          lcdData(d1);
+  84   1          msDelay(30);
+  85   1          msDelay(' ');
+  86   1          msDelay(30);
+  87   1          lcdData('C');
+  88   1            }
+  89          
+  90          
+  91          
+  92                void convert(char value)          //binary to ASCII to display
+  93                {
+  94   1            char y,d1,d2,d3;
+  95   1            y=value/10;
+  96   1            d1=value%10;
+  97   1            d2=y%10;
+  98   1            d3=y/10;
+  99   1            d1=d1|0x30;
+ 100   1            d2=d2|0x30;
+ 101   1            d3=d3|0x30;
+ 102   1            display(d1,d2);
+ 103   1            }
+ 104          
+ 105                void update(char value)               //Updates the data in lcd if data is changed
+ 106              {
+ 107   1            char y,d1,d2,d3;     
+ 108   1            y=value/10;      
+ 109   1            d1=value%10;
+ 110   1            d2=y%10;
+ 111   1            d3=y/10;
+ 112   1            d1=d1|0x30;
+ 113   1            d2=d2|0x30;
+ 114   1            d3=d3|0x30;
+ 115   1            lcdData(d2);
+ 116   1            msDelay(30);
+C51 COMPILER V9.59.0.0   AUTOAC                                                            04/06/2019 15:05:16 PAGE 3   
+
+ 117   1            msDelay(30);
+ 118   1            lcdData(d1);
+ 119   1            msDelay(30);
+ 120   1            lcdCmd(0xc0);
+ 121   1          }
+ 122          
+ 123          
+ 124          
+ 125          char adcRead()                              //Reads ADC output in binary format
+ 126                  {             
+ 127   1            char value;
+ 128   1            wr=0;                                 //pulse to ADC to Start the conv
+ 129   1            wr=1;
+ 130   1            while(INTR==1);                       //Waits till conv complete
+ 131   1            rd=0;                                 //pulse to ADC to read the data conv by ADC
+ 132   1            value=MYDATA;                         //Receiving the conv data into the P3 
+ 133   1            rd=1;
+ 134   1            return value;
+ 135   1              }
+ 136          
+ 137          
+ 138          void motorcontrol(){
+ 139   1         unsigned char i;
+ 140   1         unsigned char value;
+ 141   1         unsigned char x[6]="TEMPR:";
+ 142   1         unsigned char x1[5]="FANON";                       //TEMPR:Temperature
+ 143   1         unsigned char x2[5]="HTRON";                       //HTRON:Heater on
+ 144   1         unsigned char y[12]="SPEED:LEVEL";
+ 145   1         unsigned char z[11]="HEAT:LEVEL";
+ 146   1         unsigned char u1[5]="NORM.";                       //NOR: Normal
+ 147   1         unsigned char u2[11]="FAN,HTR OFF";                //FAN,HTR OFF:both off
+ 148   1         
+ 149   1        while(1)                                            //Infinite loop : no OS
+ 150   1           {                                        
+ 151   2          value=adcRead();                                  //read data from adc
+ 152   2          if(value<20){                                     //Heater On logic   
+ 153   3          lcdCmd(0x01);                                     //clear display
+ 154   3      for(i=0;i<6;i++)                                      //display string TEMPR
+ 155   3           {
+ 156   4           msDelay(50);
+ 157   4           lcdData(x[i]);
+ 158   4           }
+ 159   3          convert(value);                                   //convert data and display
+ 160   3          lcdCmd(0x8b);          
+ 161   3      for(i=0;i<5;i++)                                      //display HTRON
+ 162   3           {
+ 163   4          msDelay(30);
+ 164   4          lcdData(x2[i]);
+ 165   4           }
+ 166   3         
+ 167   3           while(value>HL1ii && value<HL1i)                 //level 1 heat for heater
+ 168   3             {            
+ 169   4             MTR=1;  
+ 170   4             HTR2=1;
+ 171   4             HTR1=0;
+ 172   4             msDelay(1);
+ 173   4             z[10]='1';
+ 174   4             lcdCmd(0xc0);
+ 175   4      for(i=0;i<11;i++)
+ 176   4               {
+ 177   5             msDelay(30);
+ 178   5             lcdData(z[i]);
+C51 COMPILER V9.59.0.0   AUTOAC                                                            04/06/2019 15:05:16 PAGE 4   
+
+ 179   5               }
+ 180   4             bkl5:
+ 181   4             value=adcRead();
+ 182   4          if(value>HL1ii && value<HL1i)
+ 183   4              {
+ 184   5             lcdCmd(0x86);
+ 185   5             update(value);
+ 186   5             goto bkl5;
+ 187   5              }
+ 188   4          else
+ 189   4          break;
+ 190   4            } 
+ 191   3         
+ 192   3          while(value>=HL2ii && value<=HL2i)                //level 2 heat for heater
+ 193   3            {     
+ 194   4            MTR=1;  
+ 195   4            HTR1=0;
+ 196   4            msDelay(30);
+ 197   4            HTR2=0;
+ 198   4            msDelay(1);
+ 199   4            lcdCmd(0xc0);
+ 200   4            z[10]='2';
+ 201   4          for(i=0;i<11;i++)
+ 202   4              {
+ 203   5            msDelay(30);
+ 204   5            lcdData(z[i]);
+ 205   5              }
+ 206   4            bkl6:
+ 207   4            value=adcRead();
+ 208   4         if(value>=HL2ii && value<=HL2i)
+ 209   4            {
+ 210   5            lcdCmd(0x86);
+ 211   5            update(value);
+ 212   5            goto bkl6;
+ 213   5            }
+ 214   4         else
+ 215   4         break;
+ 216   4            }
+ 217   3         } 
+ 218   2         
+ 219   2         while(value>=NLi&&value<NLii)                //Normal state logic
+ 220   2           {
+ 221   3           HTR1=1;
+ 222   3           HTR2=1;
+ 223   3           MTR=1;
+ 224   3           lcdCmd(0x01);                              //clear display
+ 225   3         for(i=0;i<6;i++)                             //display TEMPR
+ 226   3             { 
+ 227   4           msDelay(50);
+ 228   4           lcdData(x[i]);
+ 229   4             }
+ 230   3         convert(value);                              //convert data and display
+ 231   3         for(i=0;i<5;i++)
+ 232   3             {
+ 233   4           msDelay(30);
+ 234   4           lcdData(u1[i]);
+ 235   4             }
+ 236   3           lcdCmd(0xc0);
+ 237   3         for(i=0;i<11;i++)
+ 238   3             {
+ 239   4           msDelay(30);
+ 240   4           lcdData(u2[i]);
+C51 COMPILER V9.59.0.0   AUTOAC                                                            04/06/2019 15:05:16 PAGE 5   
+
+ 241   4             }
+ 242   3           bklbkl:
+ 243   3           value=adcRead();
+ 244   3         if(value>=NLi&&value<NLii)
+ 245   3            {
+ 246   4           lcdCmd(0x86);
+ 247   4           update(value);
+ 248   4           goto bklbkl;
+ 249   4            }
+ 250   3         else
+ 251   3         break;
+ 252   3         }
+ 253   2          
+ 254   2          if(value>=25)                                    //fan on logic
+ 255   2              {
+ 256   3             HTR1=1;
+ 257   3             HTR2=1;
+ 258   3             lcdCmd(0x01);                                 //clear display
+ 259   3          for(i=0;i<6;i++)                                 //display TEMPR
+ 260   3              {
+ 261   4             msDelay(50);
+ 262   4             lcdData(x[i]);
+ 263   4              }
+ 264   3             convert(value);                              //convert data and display
+ 265   3             lcdCmd(0x8b);
+ 266   3          for(i=0;i<5;i++)
+ 267   3              {
+ 268   4             msDelay(30);
+ 269   4             lcdData(x1[i]);
+ 270   4              }
+ 271   3      
+ 272   3           while(value>=FL1i && value<FL1ii)              //level 1 speed for fan
+ 273   3             { 
+ 274   4             lcdCmd(0xc0);
+ 275   4             y[11]='1';
+ 276   4           for(i=0;i<12;i++)
+ 277   4               {
+ 278   5             msDelay(30);
+ 279   5             lcdData(y[i]);
+ 280   5               }
+ 281   4             bkl1:
+ 282   4             MTR=0;
+ 283   4             msDelay(50);
+ 284   4             MTR=1;
+ 285   4             msDelay(50);
+ 286   4             value=adcRead();
+ 287   4          if(value>=FL1i && value<FL1ii)
+ 288   4            {   
+ 289   5             lcdCmd(0x86);
+ 290   5             update(value);
+ 291   5          goto bkl1;
+ 292   5            }
+ 293   4          else
+ 294   4          break;
+ 295   4          }
+ 296   3         
+ 297   3           while(value>=FL2i && value<FL2ii)                //level 2 speed for fan
+ 298   3             {
+ 299   4              y[11]='2';
+ 300   4              lcdCmd(0xc0);
+ 301   4           for(i=0;i<12;i++)
+ 302   4               {
+C51 COMPILER V9.59.0.0   AUTOAC                                                            04/06/2019 15:05:16 PAGE 6   
+
+ 303   5              msDelay(30);
+ 304   5              lcdData(y[i]);
+ 305   5               }
+ 306   4              bkl2:
+ 307   4              MTR=0;
+ 308   4              msDelay(75);
+ 309   4              MTR=1;
+ 310   4              msDelay(25);
+ 311   4              value=adcRead();
+ 312   4           if(value>=FL2i && value<FL2ii)
+ 313   4               {
+ 314   5              lcdCmd(0x86);
+ 315   5              update(value);
+ 316   5           goto bkl2;
+ 317   5               }
+ 318   4           else
+ 319   4           break;
+ 320   4             } 
+ 321   3      
+ 322   3         while(value>=FL3i)                         //level 3 speed for fan
+ 323   3           { 
+ 324   4              y[11]='3';
+ 325   4              lcdCmd(0xc0);
+ 326   4         for(i=0;i<12;i++)
+ 327   4             {
+ 328   5              msDelay(30);
+ 329   5              lcdData(y[i]);
+ 330   5             }
+ 331   4              bkl3:
+ 332   4              MTR=0;
+ 333   4              value=adcRead();
+ 334   4         if(value>=FL3i)
+ 335   4            {
+ 336   5              lcdCmd(0x86);
+ 337   5              update(value);
+ 338   5         goto bkl3;
+ 339   5            }
+ 340   4         else
+ 341   4         break;
+ 342   4          }      
+ 343   3      }
+ 344   2      }  
+ 345   1      }  
+ 346          
+ 347            void main()
+ 348              { 
+ 349   1         P0=0xff;                         //all P0=1 as output port in negative logic
+ 350   1         MYDATA=0xff;                     //all P3 as input port in positive logic
+ 351   1         INTR=1;                          //Active low config, init as high
+ 352   1         rd=1;                            //Active low config, init as high
+ 353   1         wr=1;                            //Active low config, init as high
+ 354   1         MTR=1;                           //Active low config, init as high
+ 355   1         HTR1=0;                    
+ 356   1         HTR2=0;                          //leds for heater in active low config
+ 357   1         msDelay(50);
+ 358   1         HTR1=1;                          //50ms delay Leds are turned off
+ 359   1         HTR2=1;
+ 360   1         lcdInit();                       //Initializes LCD
+ 361   1         motorcontrol();                  //Calls motorcontrol subroutine
+ 362   1         } 
+ 363          
+ 364          
+C51 COMPILER V9.59.0.0   AUTOAC                                                            04/06/2019 15:05:16 PAGE 7   
+
+ 365                              
+ 366          
+ 367          
+ 368          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1232    ----
+   CONSTANT SIZE    =     55    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----      57
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
